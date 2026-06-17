@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeImage, AIInferenceError } from "@/lib/ai";
 import { getFallbackResult } from "@/lib/fallback";
 import { checkWarranty } from "@/lib/crm";
-import { extractText } from "@/lib/ocr";
 import twilio from "twilio";
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageBase64 } = await request.json();
+    const { imageBase64, ocrText } = await request.json();
     if (!imageBase64) {
       return NextResponse.json(
         { success: false, message: "Missing image data" },
@@ -15,19 +14,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use base64 directly — already resized client-side
     const resizedBase64 = imageBase64;
 
-    // Extract text via OCR
-    let ocrText = "";
-    try {
-      ocrText = await extractText(resizedBase64);
-      console.log("[OCR] Extracted:", ocrText);
-    } catch (err) {
-      console.warn("[OCR] Failed, continuing without OCR:", err);
-    }
-
-    // AI analysis (with fallback)
     let product_name: string;
     let damage_detected: boolean;
     let warranty_eligible: boolean;
@@ -46,7 +34,6 @@ export async function POST(request: NextRequest) {
       warranty_eligible = fallback.warranty_eligible;
     }
 
-    // Warranty check via CRM (pass OCR text)
     const judgePhone = process.env.JUDGE_PHONE_NUMBER;
     if (!judgePhone) {
       throw new Error("JUDGE_PHONE_NUMBER not set");
@@ -54,7 +41,6 @@ export async function POST(request: NextRequest) {
 
     const crmResult = checkWarranty(judgePhone, product_name, ocrText);
 
-    // Compose response
     let responsePayload: {
       success: boolean;
       message: string;
@@ -68,7 +54,6 @@ export async function POST(request: NextRequest) {
     };
 
     if (crmResult.approved) {
-      // Attempt WhatsApp message
       const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
       const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
       const twilioFrom = process.env.TWILIO_WHATSAPP_FROM;
@@ -96,10 +81,7 @@ export async function POST(request: NextRequest) {
         } catch (twilioError: any) {
           console.error("[TWILIO] Send failed:", twilioError.message);
           responsePayload.whatsappSent = false;
-          // Provide a direct link to the label page as fallback
-          if (labelUrl) {
-            responsePayload.labelUrl = labelUrl;
-          }
+          if (labelUrl) responsePayload.labelUrl = labelUrl;
         }
       }
 
@@ -108,7 +90,6 @@ export async function POST(request: NextRequest) {
         ? "Claim approved! Check your WhatsApp for the return label."
         : "Claim approved! WhatsApp message could not be delivered. Please use the link below to access your return label.";
     } else {
-      // Not approved
       responsePayload.success = false;
       responsePayload.message = `Sorry, your ${product_name} is not eligible for warranty claim.`;
       return NextResponse.json(responsePayload, { status: 200 });

@@ -1,3 +1,5 @@
+import { extractTextFromImage } from './ocr';
+
 const MAX_DIMENSION = 512;
 
 /**
@@ -23,16 +25,13 @@ export function processImage(file: File): Promise<string> {
             return;
           }
 
-          // Step-down resize for quality if the image is large
           if (img.width > MAX_DIMENSION * 2 || img.height > MAX_DIMENSION * 2) {
             stepDownResize(img, canvas, ctx, width, height);
           } else {
             ctx.drawImage(img, 0, 0, width, height);
           }
 
-          // Export as JPEG data URL
           const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          // Extract only the base64 part after the comma
           const base64 = dataUrl.split(',')[1] || dataUrl;
           resolve(base64);
         } catch (e) {
@@ -46,6 +45,21 @@ export function processImage(file: File): Promise<string> {
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Process image and also extract OCR text client-side.
+ */
+export async function processImageWithOCR(file: File): Promise<{ base64: string; ocrText: string }> {
+  const base64 = await processImage(file);
+  let ocrText = '';
+  try {
+    ocrText = await extractTextFromImage(base64);
+    console.log('[OCR] Client-side:', ocrText);
+  } catch (err) {
+    console.warn('[OCR] Client-side failed:', err);
+  }
+  return { base64, ocrText };
 }
 
 function calculateDimensions(origW: number, origH: number) {
@@ -71,12 +85,10 @@ function stepDownResize(
   const tempCanvas = document.createElement('canvas');
   const tempCtx = tempCanvas.getContext('2d')!;
 
-  // First draw: full size onto temp
   tempCanvas.width = currentW;
   tempCanvas.height = currentH;
   tempCtx.drawImage(source, 0, 0);
 
-  // Step down by halves until close to target
   while (currentW / 2 > targetW) {
     currentW = Math.round(currentW / 2);
     currentH = Math.round(currentH / 2);
@@ -90,6 +102,5 @@ function stepDownResize(
     tempCtx.drawImage(stepCanvas, 0, 0);
   }
 
-  // Final draw to exact target size
   finalCtx.drawImage(tempCanvas, 0, 0, targetW, targetH);
 }
