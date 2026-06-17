@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeImage, AIInferenceError } from "@/lib/ai";
 import { getFallbackResult } from "@/lib/fallback";
 import { checkWarranty } from "@/lib/crm";
+import { extractText } from "@/lib/ocr";
 import twilio from "twilio";
 
 export async function POST(request: NextRequest) {
@@ -14,21 +15,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Client already resizes — use base64 directly
+    // Use base64 directly — already resized client-side
     const resizedBase64 = imageBase64;
+
+    // Extract text via OCR
+    let ocrText = "";
+    try {
+      ocrText = await extractText(resizedBase64);
+      console.log("[OCR] Extracted:", ocrText);
+    } catch (err) {
+      console.warn("[OCR] Failed, continuing without OCR:", err);
+    }
 
     // AI analysis (with fallback)
     let product_name: string;
     let damage_detected: boolean;
     let warranty_eligible: boolean;
-    let aiPathUsed = false;
 
     try {
       const aiResult = await analyzeImage(resizedBase64);
       product_name = aiResult.product_name;
       damage_detected = aiResult.damage_detected;
       warranty_eligible = aiResult.warranty_eligible;
-      aiPathUsed = true;
       console.log("[AI_PATH] AI succeeded", aiResult);
     } catch (error) {
       console.error("[FALLBACK_TRIGGERED]", error);
@@ -38,13 +46,13 @@ export async function POST(request: NextRequest) {
       warranty_eligible = fallback.warranty_eligible;
     }
 
-    // Warranty check via CRM
+    // Warranty check via CRM (pass OCR text)
     const judgePhone = process.env.JUDGE_PHONE_NUMBER;
     if (!judgePhone) {
       throw new Error("JUDGE_PHONE_NUMBER not set");
     }
 
-    const crmResult = checkWarranty(judgePhone, product_name);
+    const crmResult = checkWarranty(judgePhone, product_name, ocrText);
 
     // Compose response
     let responsePayload: {
