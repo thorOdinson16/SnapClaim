@@ -7,6 +7,7 @@ export class AIInferenceError extends Error {
   }
 }
 
+// Analyze the image using Groq's AI model
 export async function analyzeImage(base64Image: string): Promise<{
   product_name: string;
   damage_detected: boolean;
