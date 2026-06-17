@@ -30,7 +30,8 @@ export function checkWarranty(
     return { approved: false, customerName: "" };
   }
 
-  const productMatch = customer.registeredProduct === productName;
+  const normalize = (str: string) => str.trim().toLowerCase();
+  const productMatch = normalize(customer.registeredProduct) === normalize(productName);
   const warrantyValid = !customer.warrantyExpired;
 
   return {

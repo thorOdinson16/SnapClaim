@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       success: boolean;
       message: string;
       whatsappSent: boolean;
+      whatsappFailed?: boolean;
       labelUrl?: string;
     } = {
       success: true,
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      responsePayload.whatsappFailed = !responsePayload.whatsappSent;
       responsePayload.message = responsePayload.whatsappSent
         ? "Claim approved! Check your WhatsApp for the return label."
         : "Claim approved! WhatsApp message could not be delivered. Please use the link below to access your return label.";

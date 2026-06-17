@@ -175,11 +175,12 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Success ── */}
+      {/* ── Success / WhatsApp Fallback ── */}
       {(ctx.state === 'success' || ctx.state === 'whatsapp-fallback') && (
         <div className="glass-card p-6 w-full max-w-sm animate-slide-up">
           <SuccessScreen
             whatsappFailed={ctx.state === 'whatsapp-fallback'}
+            labelUrl={ctx.response?.labelUrl}
             onReset={() => dispatch({ type: 'RESET' })}
           />
         </div>

@@ -2,7 +2,7 @@ const MAX_DIMENSION = 512;
 
 /**
  * Resize an image file so its longest side is ≤512px,
- * maintaining aspect ratio, and export as base64 JPEG.
+ * maintaining aspect ratio, and export as pure base64 string (no data URL prefix).
  */
 export function processImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -30,8 +30,10 @@ export function processImage(file: File): Promise<string> {
             ctx.drawImage(img, 0, 0, width, height);
           }
 
-          // Export as JPEG with 0.85 quality
-          const base64 = canvas.toDataURL('image/jpeg', 0.85);
+          // Export as JPEG data URL
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          // Extract only the base64 part after the comma
+          const base64 = dataUrl.split(',')[1] || dataUrl;
           resolve(base64);
         } catch (e) {
           reject(e);

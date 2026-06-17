@@ -1,8 +1,10 @@
 export interface ClaimResponse {
   success: boolean;
   message: string;
-  /** Optional flag — if true, claim was approved but WhatsApp delivery failed */
+  /** True if claim was approved but WhatsApp delivery failed */
   whatsappFailed?: boolean;
+  /** URL to the return label page (if available, especially when WhatsApp fails) */
+  labelUrl?: string;
 }
 
 export type AppState =
