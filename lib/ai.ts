@@ -29,7 +29,7 @@ Do not include any additional text, markdown, or explanation.
   try {
     const chatCompletion = await groq.chat.completions.create(
       {
-        model: "llama-4-scout-17b-16e-instruct",
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
         messages: [
           {
             role: "system",
