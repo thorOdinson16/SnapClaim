@@ -1,0 +1,12 @@
+{
+  "customers": [
+    {
+      "phone": "+15551234567",
+      "name": "Judge Smith",
+      "registeredProduct": "Model X Keyboard",
+      "purchaseDate": "2025-11-01",
+      "warrantyYears": 2,
+      "warrantyExpired": false
+    }
+  ]
+}
