@@ -1,16 +1,14 @@
 import { ClaimResponse } from '@/types';
 
 /**
- * Submit a damage claim with a base64-encoded image.
- * Calls POST /api/claim — works against both the real backend
- * and the local stub route.
+ * Submit a damage claim with a base64-encoded image and optional OCR text.
  */
-export async function submitClaim(imageBase64: string): Promise<ClaimResponse> {
+export async function submitClaim(imageBase64: string, ocrText?: string): Promise<ClaimResponse> {
   try {
     const res = await fetch('/api/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64 }),
+      body: JSON.stringify({ imageBase64, ocrText }),
     });
 
     if (!res.ok) {
