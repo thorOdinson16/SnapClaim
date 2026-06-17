@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeImage, AIInferenceError } from "@/lib/ai";
+import { ocrImage, analyzeDamage, AIInferenceError } from "@/lib/ai";
 import { getFallbackResult } from "@/lib/fallback";
 import { checkWarranty } from "@/lib/crm";
 import twilio from "twilio";
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageBase64, ocrText } = await request.json();
+    const { imageBase64 } = await request.json();
     if (!imageBase64) {
       return NextResponse.json(
         { success: false, message: "Missing image data" },
@@ -14,24 +14,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resizedBase64 = imageBase64;
+    // Step 1: OCR (may return empty string)
+    let ocrText = "";
+    try {
+      ocrText = await ocrImage(imageBase64);
+    } catch (err) {
+      console.warn("[OCR] Groq OCR threw an error");
+    }
 
-    let product_name: string;
-    let damage_detected: boolean;
-    let warranty_eligible: boolean;
+    // Step 2: Damage assessment
+    let damage_detected = false;
+    let warranty_eligible = false;
+    let product_name = ocrText; // from OCR, may be empty
 
     try {
-      const aiResult = await analyzeImage(resizedBase64);
-      product_name = aiResult.product_name;
-      damage_detected = aiResult.damage_detected;
-      warranty_eligible = aiResult.warranty_eligible;
-      console.log("[AI_PATH] AI succeeded", aiResult);
+      const damageResult = await analyzeDamage(imageBase64);
+      damage_detected = damageResult.damage_detected;
+      warranty_eligible = damageResult.warranty_eligible;
+      console.log("[AI] Damage:", damageResult);
     } catch (error) {
+      // ONLY here we use the hardcoded fallback – AI call itself failed
       console.error("[FALLBACK_TRIGGERED]", error);
       const fallback = getFallbackResult();
-      product_name = fallback.product_name;
       damage_detected = fallback.damage_detected;
       warranty_eligible = fallback.warranty_eligible;
+      product_name = fallback.product_name;
+      ocrText = fallback.product_name; // so CRM can match
     }
 
     const judgePhone = process.env.JUDGE_PHONE_NUMBER;
@@ -39,9 +47,9 @@ export async function POST(request: NextRequest) {
       throw new Error("JUDGE_PHONE_NUMBER not set");
     }
 
-    const crmResult = checkWarranty(judgePhone, product_name, ocrText);
+    const crmResult = checkWarranty(judgePhone, ocrText);
 
-    let responsePayload: {
+    const responsePayload: {
       success: boolean;
       message: string;
       whatsappSent: boolean;
@@ -60,18 +68,15 @@ export async function POST(request: NextRequest) {
 
       if (!twilioAccountSid || !twilioAuthToken || !twilioFrom) {
         console.error("[TWILIO] Missing credentials");
-        responsePayload.whatsappSent = false;
       } else {
         const twilioClient = twilio(twilioAccountSid, twilioAuthToken);
         const publicUrl = process.env.PUBLIC_URL;
         const qrUrl = publicUrl ? `${publicUrl}/api/qr` : null;
         const labelUrl = publicUrl ? `${publicUrl}/label` : null;
 
-        const messageBody = `SnapClaim: We've identified your ${product_name}. It's under warranty. Here's your free return label.`;
-
         try {
           await twilioClient.messages.create({
-            body: messageBody,
+            body: `SnapClaim: We've identified your ${product_name || "product"}. It's under warranty. Here's your free return label.`,
             from: twilioFrom,
             to: `whatsapp:${judgePhone}`,
             ...(qrUrl ? { mediaUrl: [qrUrl] } : {}),
@@ -80,7 +85,6 @@ export async function POST(request: NextRequest) {
           console.log("[TWILIO] Message sent");
         } catch (twilioError: any) {
           console.error("[TWILIO] Send failed:", twilioError.message);
-          responsePayload.whatsappSent = false;
           if (labelUrl) responsePayload.labelUrl = labelUrl;
         }
       }
@@ -91,7 +95,7 @@ export async function POST(request: NextRequest) {
         : "Claim approved! WhatsApp message could not be delivered. Please use the link below to access your return label.";
     } else {
       responsePayload.success = false;
-      responsePayload.message = `Sorry, your ${product_name} is not eligible for warranty claim.`;
+      responsePayload.message = `Sorry, the product could not be verified for warranty claim.`;
       return NextResponse.json(responsePayload, { status: 200 });
     }
 

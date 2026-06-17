@@ -12,8 +12,7 @@ interface Customer {
 
 export function checkWarranty(
   phone: string,
-  productName: string,
-  ocrText?: string
+  ocrText: string
 ): { approved: boolean; customerName: string } {
   const filePath = path.join(process.cwd(), "data", "mockCRM.json");
   if (!fs.existsSync(filePath)) {
@@ -26,30 +25,20 @@ export function checkWarranty(
   const customer = crmData.customers.find(
     (c: Customer) => c.phone === phone
   );
-
   if (!customer) {
     return { approved: false, customerName: "" };
   }
 
   const normalize = (str: string) => str.trim().toLowerCase();
-  const crmWords = customer.registeredProduct.toLowerCase().split(/\s+/);
+  const crmWords = normalize(customer.registeredProduct).split(/\s+/);
+  const ocrWords = normalize(ocrText).split(/\s+/);
 
-  // Score from AI product name
-  const aiWords = normalize(productName).split(/\s+/);
-  const aiScore = crmWords.filter(w => aiWords.includes(w)).length;
+  const matched = crmWords.filter((w) => ocrWords.includes(w));
+  const productMatch = matched.length === crmWords.length;
 
-  // Score from OCR text (if available)
-  let ocrScore = 0;
-  if (ocrText) {
-    const ocrLower = ocrText.toLowerCase();
-    ocrScore = crmWords.filter(w => ocrLower.indexOf(w) !== -1).length;
-  }
-
-  // Use the best score
-  const bestScore = Math.max(aiScore, ocrScore);
-  const productMatch = bestScore >= 2; // at least "model" + "keyboard"
-
-  console.log(`[CRM] AI score: ${aiScore}, OCR score: ${ocrScore} -> match: ${productMatch}`);
+  console.log(
+    `[CRM] OCR words: ${ocrWords}, CRM words: ${crmWords}, matched: ${matched.length}/${crmWords.length}`
+  );
 
   const warrantyValid = !customer.warrantyExpired;
 

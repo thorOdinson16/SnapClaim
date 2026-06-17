@@ -7,38 +7,27 @@ export class AIInferenceError extends Error {
   }
 }
 
-// Analyze the image using Groq's AI model
-export async function analyzeImage(base64Image: string): Promise<{
-  product_name: string;
-  damage_detected: boolean;
-  warranty_eligible: boolean;
-}> {
+/**
+ * Step 1: Transcribe all visible text from the image.
+ * No product examples, no hints.
+ */
+export async function ocrImage(base64Image: string): Promise<string> {
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-  const systemPrompt = `
-You are a warranty claim processor. Analyse the image of a damaged product.
-Return exactly a JSON object with these keys:
-- product_name: string (the exact model if clearly visible, else "unknown")
-- damage_detected: boolean
-- warranty_eligible: boolean (true if product is identifiable and clearly broken)
-Do not include any additional text, markdown, or explanation.
-`.trim();
-
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
   try {
-    const chatCompletion = await groq.chat.completions.create(
+    const completion = await groq.chat.completions.create(
       {
         model: "meta-llama/llama-4-scout-17b-16e-instruct",
         messages: [
           {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
             role: "user",
             content: [
+              {
+                type: "text",
+                text: "Read ALL visible text on this product — labels, stickers, printed model numbers, brand names. Return ONLY the raw text you see, exactly as it appears. Do not add any other words. If you cannot read any text, return an empty string.",
+              },
               {
                 type: "image_url",
                 image_url: {
@@ -49,38 +38,76 @@ Do not include any additional text, markdown, or explanation.
           },
         ],
         temperature: 0,
-        max_tokens: 256,
+        max_tokens: 200,
       },
       { signal: controller.signal }
     );
 
-    const rawContent = chatCompletion.choices[0]?.message?.content;
-    if (!rawContent) throw new AIInferenceError("Empty response from Groq");
+    const text = completion.choices[0]?.message?.content || "";
+    console.log("[OCR] Transcribed:", text.substring(0, 200));
+    return text.trim();
+  } catch (err: any) {
+    console.error("[OCR] Failed:", err.message);
+    return "";
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
-    // Strip any potential markdown code fences
-    let jsonStr = rawContent.trim();
-    if (jsonStr.startsWith("```json")) {
-      jsonStr = jsonStr.slice(7);
-    } else if (jsonStr.startsWith("```")) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith("```")) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
+/**
+ * Step 2: Damage assessment only.
+ * No product name involved.
+ */
+export async function analyzeDamage(base64Image: string): Promise<{
+  damage_detected: boolean;
+  warranty_eligible: boolean;
+}> {
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
 
+  try {
+    const completion = await groq.chat.completions.create(
+      {
+        model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: 'Is the item in this image physically damaged or clearly broken? Return ONLY a JSON object with these keys: { "damage_detected": boolean, "warranty_eligible": boolean }. No other text.',
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0,
+        max_tokens: 100,
+      },
+      { signal: controller.signal }
+    );
+
+    const raw = completion.choices[0]?.message?.content || "";
+    let jsonStr = raw.trim();
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/```(?:json)?/g, "").trim();
+    }
     const parsed = JSON.parse(jsonStr);
     return {
-      product_name: parsed.product_name ?? "unknown",
       damage_detected: Boolean(parsed.damage_detected),
       warranty_eligible: Boolean(parsed.warranty_eligible),
     };
-  } catch (error: any) {
-    if (error.name === "AbortError" || error.code === "ETIMEDOUT") {
+  } catch (err: any) {
+    if (err.name === "AbortError" || err.code === "ETIMEDOUT") {
       throw new AIInferenceError("Groq request timed out");
     }
-    throw new AIInferenceError(
-      `AI inference failed: ${error.message || "Unknown error"}`
-    );
+    throw new AIInferenceError(`Damage analysis failed: ${err.message}`);
   } finally {
     clearTimeout(timeoutId);
   }
