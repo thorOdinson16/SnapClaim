@@ -31,20 +31,25 @@ export function checkWarranty(
     return { approved: false, customerName: "" };
   }
 
-  // Simple matching — if OCR text is available, check if CRM product words appear
-  let productMatch = false;
-  
+  const normalize = (str: string) => str.trim().toLowerCase();
+  const crmWords = customer.registeredProduct.toLowerCase().split(/\s+/);
+
+  // Score from AI product name
+  const aiWords = normalize(productName).split(/\s+/);
+  const aiScore = crmWords.filter(w => aiWords.includes(w)).length;
+
+  // Score from OCR text (if available)
+  let ocrScore = 0;
   if (ocrText) {
     const ocrLower = ocrText.toLowerCase();
-    const crmWords = customer.registeredProduct.toLowerCase().split(/\s+/);
-    const matchedWords = crmWords.filter((word: string) => ocrLower.includes(word));
-    productMatch = matchedWords.length >= 2; // "model" + "keyboard" at minimum
-    console.log(`[CRM] OCR match: ${matchedWords.length}/${crmWords.length} words matched`);
-  } else {
-    // Fallback to basic string comparison
-    const normalize = (str: string) => str.trim().toLowerCase();
-    productMatch = normalize(customer.registeredProduct) === normalize(productName);
+    ocrScore = crmWords.filter(w => ocrLower.indexOf(w) !== -1).length;
   }
+
+  // Use the best score
+  const bestScore = Math.max(aiScore, ocrScore);
+  const productMatch = bestScore >= 2; // at least "model" + "keyboard"
+
+  console.log(`[CRM] AI score: ${aiScore}, OCR score: ${ocrScore} -> match: ${productMatch}`);
 
   const warrantyValid = !customer.warrantyExpired;
 
