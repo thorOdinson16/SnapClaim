@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 import { analyzeImage, AIInferenceError } from "@/lib/ai";
 import { getFallbackResult } from "@/lib/fallback";
 import { checkWarranty } from "@/lib/crm";
@@ -15,12 +14,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Server‑side resize to guard against client failures
-    const imageBuffer = Buffer.from(imageBase64, "base64");
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(512, 512, { fit: "inside" })
-      .toBuffer();
-    const resizedBase64 = resizedBuffer.toString("base64");
+    // Client already resizes — use base64 directly
+    const resizedBase64 = imageBase64;
 
     // AI analysis (with fallback)
     let product_name: string;
